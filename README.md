@@ -14,6 +14,7 @@ An unofficial async Python API wrapper for **Webtop** (the SmartSchool education
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Command-Line Usage](#command-line-usage)
 - [API Reference](#api-reference)
 - [Examples](#examples)
 - [Error Handling](#error-handling)
@@ -39,6 +40,7 @@ An unofficial async Python API wrapper for **Webtop** (the SmartSchool education
 - 👥 **Multi-Student Support** - Discover and switch between siblings/linked accounts
 - 🧰 **Raw Request Helper** - Call any other Webtop endpoint with the authenticated `request()` method
 - ⚙️ **Configurable** - Custom base URL, timeout, and auto-login support
+- 🖥️ **CLI** - `webtop` command for quick lookups, installable with `uv tool install`
 
 ## Installation
 
@@ -61,6 +63,16 @@ The package is installed as `pywebtop`, but it is imported as `webtop`:
 ```python
 from webtop import WebtopClient
 ```
+
+To install only the `webtop` command-line tool in its own isolated environment:
+
+```bash
+uv tool install pywebtop
+# or from source
+uv tool install git+https://github.com/t0mer/pywebtop.git
+```
+
+pywebtop works both as a library (import `webtop` in your code) and as a CLI. See [Command-Line Usage](#command-line-usage).
 
 ### Requirements
 
@@ -107,6 +119,35 @@ async with WebtopClient(
     # Now make requests
     dashboard = await client.get_students()
 ```
+
+## Command-Line Usage
+
+Installing the package (with `pip` or `uv tool install`) adds a `webtop` command. It logs in, runs one call, and prints the JSON response to stdout.
+
+Credentials come from environment variables, or you're prompted for them. For safety, the password can't be passed as a command-line argument.
+
+| Variable | Purpose |
+|----------|---------|
+| `WEBTOP_USERNAME` | Username (or `-u/--username`) |
+| `WEBTOP_PASSWORD` | Password (prompted without echo if unset) |
+| `WEBTOP_DATA` | Optional `data` login value (see [Obtaining the `data` Parameter](#obtaining-the-data-parameter)) |
+
+```bash
+webtop login                       # verify credentials, print session info
+webtop accounts                    # other Webtop logins linked to yours (rarely needed)
+webtop kids                        # your children: id, class code/number
+webtop homework                    # today's homework for all kids
+webtop homework yesterday          # also: tomorrow, week, 2026-10-15
+webtop homework week --kid יואב     # one kid; shows each lesson's topic + homework
+webtop homework --hw-only          # only lessons with homework (--all: every lesson)
+webtop --switch-account <studentId> messages --unread
+webtop messages --page 2 --search "trip"
+webtop notifications
+webtop schedule --student-id <encrypted id> --class-code 5 --year 2026 --week 0
+webtop --help                      # all commands; `webtop <command> --help` for options
+```
+
+Add `-v` for debug logging (to stderr). The exit code is `1` on login or request errors.
 
 ## API Reference
 
@@ -248,6 +289,20 @@ schedule = await client.get_pupil_schedule(
 - `encrypted_student_id` - Encrypted student ID from the login data (required)
 - `class_code` - Class code (required)
 - `module_id` - Module ID (default: 10)
+
+##### `get_lessons_and_homework()`
+Get a week (Sunday-Friday) of lessons with each lesson's topic and homework. Unlike `get_homework()`, which only covers today, this works for past and future weeks. Each day in `data` has a `date`, and each lesson has `subject_name`, `teacher`, `descClass` (topic), `homeWork` and `files`.
+
+```python
+week = await client.get_lessons_and_homework(
+    week_index=-1,          # previous week
+    study_year=2027,        # school year 2026-2027
+    encrypted_student_id=child["id"],    # from get_students()["data"]["childrens"]
+    class_code=child["classCode"],
+)
+```
+
+Takes the same parameters as `get_pupil_schedule()`.
 
 #### Messaging
 
@@ -480,7 +535,7 @@ asyncio.run(main())
 Good to know:
 - Apart from `get_linked_students()`, the endpoint methods do **not** check the `status` field of the JSON body. A response with `"status": false` and HTTP 200 is returned to you as-is, so check `status` yourself.
 - `login()` wraps a non-JSON response in `WebtopLoginError`. `switch_student()` and the endpoint methods do not: a non-JSON body raises the underlying JSON decoding error, and `switch_student()` also lets `httpx` timeout and network errors through unwrapped.
-- Exception messages can include the raw server response body.
+- On HTTP errors, exception messages include up to 200 characters of the server response body.
 
 ## Authentication Details
 
@@ -532,6 +587,7 @@ All requests go to `base_url` (default `https://webtopserver.smartschool.co.il`)
 | `get_notification_settings()` | `/server/api/Notification/GetNotificationsSettings` | `id` |
 | `get_messages_inbox()` | `/server/api/messageBox/GetMessagesInbox` | `PageId`, `LabelId`, `HasRead`, `SearchQuery` |
 | `get_pupil_schedule()` | `/server/api/PupilCard/GetPupilScheduale` | `weekIndex`, `viewType`, `studyYear`, `studentID`, `classCode`, `moduleID` |
+| `get_lessons_and_homework()` | `/server/api/PupilCard/GetPupilLessonsAndHomework` | `weekIndex`, `viewType`, `studyYear`, `studentID`, `classCode`, `moduleID` |
 
 The spellings `GetPupilDiciplineEvents` and `GetPupilScheduale` are the server's own endpoint names.
 
@@ -590,7 +646,7 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("webtop").setLevel(logging.DEBUG)
 ```
 
-> **Warning: the logs contain personal data.** At `INFO` level the library logs the username, the logged-in user's first and last name and school name, the names after a student switch, and inbox search queries. `switch_student()` also logs the first characters of the student ID at `INFO`. At `ERROR` level it logs raw server response bodies and full `ChangeUser` / `GetMultipleUsersForUser` responses. Passwords and the token are not logged. Keep the `webtop` logger at `WARNING` or higher in production, and don't ship these logs to shared or third-party log services.
+> **Note on personal data in logs.** The library doesn't log usernames, names, search queries, passwords, or the token. At `ERROR` level it logs up to 200 characters of a failed response body, which can still contain personal data. Keep the `webtop` logger at `WARNING` or higher in production, and don't ship these logs to shared or third-party log services.
 
 ```python
 logging.getLogger("webtop").setLevel(logging.WARNING)
@@ -604,7 +660,8 @@ Webtop holds data about students, most of whom are minors: names, schools, class
 - **Credentials:** don't hard-code usernames and passwords in scripts you commit. Load them from environment variables or a secrets manager instead.
 - **Token:** `session.token` (and `raw_login_data`) grants access to the account until it expires. Don't print, log, or store it.
 - **Stored data:** if you save responses (for example, to feed a bot or a dashboard), keep them private, limit who can read them, and delete them when you no longer need them.
-- **Logs and errors:** see [Logging](#logging). Exception messages can include raw response bodies too.
+- **Logs and errors:** see [Logging](#logging). On HTTP errors, exception messages include up to 200 characters of the response body.
+- **Token scoping:** the `webToken` cookie is bound to the API host and marked secure, so it isn't sent to other hosts (for example, after a redirect) or over plain HTTP. `base_url` must be `https`, and `request()` only accepts paths relative to it.
 - **Request volume:** poll at a modest rate. The API is private and not meant for heavy automated use.
 
 ## Troubleshooting
@@ -622,13 +679,15 @@ pywebtop/
 ├── webtop/
 │   ├── __init__.py           # Package exports
 │   ├── client.py             # Main WebtopClient class
+│   ├── cli.py                # `webtop` command-line interface
 │   ├── models.py             # Data models (WebtopSession)
 │   └── exceptions.py         # Custom exceptions
 ├── examples/
 │   └── multi_student_messages.py  # Linked-student discovery and messages
 ├── .github/workflows/
 │   └── python-publish.yml    # Builds and publishes to PyPI
-├── setup.py                  # Package setup
+├── setup.py                  # Package setup (incl. `webtop` console script)
+├── pyproject.toml            # Build-system declaration
 ├── LICENSE                   # License text
 └── README.md                 # This file
 ```
