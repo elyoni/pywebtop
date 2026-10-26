@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .client import WebtopClient
 from .exceptions import WebtopError
@@ -178,6 +178,16 @@ def _parse_when(when: str, today: dt.date) -> List[dt.date]:
         raise ValueError(f"invalid date {when!r}: use today, yesterday, tomorrow, week or YYYY-MM-DD") from None
 
 
+def _school_today() -> dt.date:
+    """Today in Israel, where the school is, whatever the computer's time zone."""
+    try:
+        from zoneinfo import ZoneInfo  # Python 3.9+
+
+        return dt.datetime.now(ZoneInfo("Asia/Jerusalem")).date()
+    except Exception:  # Python 3.8, or no tz database (e.g. Windows without tzdata)
+        return dt.date.today()
+
+
 def _week_start(day: dt.date) -> dt.date:
     """The Sunday that starts the school week containing `day`."""
     return day - dt.timedelta(days=(day.weekday() + 1) % 7)
@@ -209,7 +219,7 @@ def _lessons_for_day(week: Any, day: dt.date) -> List[Dict[str, Any]]:
 
 
 async def _cmd_homework(client: WebtopClient, args: argparse.Namespace) -> Any:
-    today = dt.date.today()
+    today = _school_today()
     days = _parse_when(args.when, today)
 
     kids = await _get_kids(client)
@@ -220,18 +230,19 @@ async def _cmd_homework(client: WebtopClient, args: argparse.Namespace) -> Any:
 
     result = []
     for kid in kids:
-        weeks: Dict[dt.date, Any] = {}
+        # Keyed by study year too: a week from late August into September spans two years.
+        weeks: Dict[Tuple[dt.date, int], Any] = {}
         kid_days = []
         for day in days:
-            sunday = _week_start(day)
-            if sunday not in weeks:
-                weeks[sunday] = await client.get_lessons_and_homework(
-                    week_index=(sunday - _week_start(today)).days // 7,
-                    study_year=_study_year(day),
+            key = (_week_start(day), _study_year(day))
+            if key not in weeks:
+                weeks[key] = await client.get_lessons_and_homework(
+                    week_index=(key[0] - _week_start(today)).days // 7,
+                    study_year=key[1],
                     encrypted_student_id=kid["id"],
                     class_code=kid["class_code"],
                 )
-            lessons = _lessons_for_day(weeks[sunday], day)
+            lessons = _lessons_for_day(weeks[key], day)
             # Default: lessons with a topic or homework. Topics often hold the
             # assignment too (e.g. "work in the yellow book pp. 6-7").
             if args.hw_only:

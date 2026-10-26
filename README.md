@@ -339,9 +339,16 @@ body_html = message["data"]["messageData"]["messageContent"]
 Download an attachment as bytes. Pass a `fileUrl` from the message's `filesList` (items also have `fileName`, `fileExtantion`, `fileSize`). Only the URL's token is used, so the request always goes to Webtop. Download in the same session as `get_message()`.
 
 ```python
+from pathlib import Path
+
+folder = Path("attachments")
+folder.mkdir(exist_ok=True)
 for f in message["data"]["messageData"]["filesList"]:
     content = await client.download_file(file_url=f["fileUrl"])
-    Path(f["fileName"]).write_bytes(content)
+    # fileName comes from the server: keep only its last part, and never overwrite
+    name = Path(f["fileName"].replace("\\", "/")).name or "attachment"
+    with open(folder / name, "xb") as out:  # "x": fails if the file already exists
+        out.write(content)
 ```
 
 #### Notifications

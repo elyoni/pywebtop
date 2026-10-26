@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from http.cookiejar import Cookie
+from http.cookiejar import Cookie, DefaultCookiePolicy
 from typing import Any, Dict, Optional
 
 import httpx
@@ -66,6 +66,11 @@ class WebtopClient:
                 timeout=timeout,
                 headers={"Content-Type": "application/json; charset=utf-8"},
                 follow_redirects=True,
+            )
+            # The default policy also sends a host-only cookie (webToken) to subdomains,
+            # e.g. after a redirect; require an exact host match instead.
+            self._http.cookies.jar.set_policy(
+                DefaultCookiePolicy(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain)
             )
             logger.debug(f"HTTP client created with timeout={timeout}s")
         except Exception as e:
@@ -221,15 +226,20 @@ class WebtopClient:
         """
         logger.info("Switching student")
         try:
-            resp = await self._http.post(
-                "/server/api/user/ChangeUser",
-                json={
-                    "StudentId": student_id,
-                    "institutionCode": None,
-                    "savedUser": saved_user,
-                    "userType": None
-                },
-            )
+            try:
+                resp = await self._http.post(
+                    "/server/api/user/ChangeUser",
+                    json={
+                        "StudentId": student_id,
+                        "institutionCode": None,
+                        "savedUser": saved_user,
+                        "userType": None
+                    },
+                )
+            except httpx.TimeoutException as e:
+                raise WebtopLoginError(f"Switch student request timed out: {e}") from e
+            except httpx.RequestError as e:
+                raise WebtopLoginError(f"Switch student request failed: {e}") from e
             
             if resp.status_code >= 400:
                 body_snippet = _snippet(resp.text)
