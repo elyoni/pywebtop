@@ -541,7 +541,8 @@ class WebtopClient:
                 json={
                     "PageId": page_id,
                     "LabelId": label_id,
-                    "HasRead": has_read,
+                    # The server wants 0 / 1; JSON true / false is rejected with HTTP 400.
+                    "HasRead": None if has_read is None else int(has_read),
                     "SearchQuery": search_query,
                 },
             )
@@ -550,6 +551,35 @@ class WebtopClient:
             return data
         except Exception as e:
             logger.error(f"Failed to get messages inbox (page={page_id}): {e}")
+            raise
+
+    async def get_message(self, *, message_id: str) -> Any:
+        """
+        Get one inbox message: its HTML body, attachments, recipients, and any
+        signature / survey the parent is asked to fill in.
+
+        POST /server/api/messageBox/GetMessagesInboxData
+
+        Auth:
+          - Cookie: webToken=<token>
+
+        Params:
+          message_id: `messageId` from get_messages_inbox() (stable across logins)
+
+        Note: like opening it on the site, this marks the message as read.
+        """
+        logger.info("Fetching message")
+        try:
+            resp = await self.request(
+                "POST",
+                "/server/api/messageBox/GetMessagesInboxData",
+                json={"MessageId": message_id, "FilterId": 0, "IsInbox": True, "hasRead": None},
+            )
+            data = resp.json()
+            logger.info("Message fetched successfully")
+            return data
+        except Exception as e:
+            logger.error(f"Failed to get message: {e}")
             raise
 
     async def get_pupil_schedule(

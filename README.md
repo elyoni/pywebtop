@@ -34,7 +34,7 @@ An unofficial async Python API wrapper for **Webtop** (the SmartSchool education
 - 📚 **Student Portal Access** - Log in and retrieve the student dashboard
 - 📖 **Homework & Assignments** - Get homework details by class
 - 📅 **Schedule/Timetable** - Retrieve pupil schedules for any week
-- 💬 **Messaging System** - Access the message inbox with paging, read-status filter, and search
+- 💬 **Messaging System** - Access the message inbox with paging, read-status filter, and search, and read full messages
 - 🔔 **Notifications** - Get unread notifications and notification settings
 - 📊 **Discipline Events** - Retrieve behavior/discipline records
 - 👥 **Multi-Student Support** - Discover and switch between siblings/linked accounts
@@ -142,6 +142,7 @@ webtop homework week --kid יואב     # one kid; shows each lesson's topic + h
 webtop homework --hw-only          # only lessons with homework (--all: every lesson)
 webtop --switch-account <studentId> messages --unread
 webtop messages --page 2 --search "trip"
+webtop message <messageId>         # one message's full body; marks it as read
 webtop notifications
 webtop schedule --student-id <encrypted id> --class-code 5 --year 2026 --week 0
 webtop --help                      # all commands; `webtop <command> --help` for options
@@ -153,7 +154,7 @@ Add `-v` for debug logging (to stderr). The exit code is `1` on login or request
 
 All methods are coroutines (`await` them). Apart from `login()`, `switch_student()`, `get_linked_students()`, and `request()`, every endpoint method returns the **parsed JSON response as-is** (usually a `dict` with `status`, `data`, and error fields). The library does not model the response contents, so inspect the returned data for the fields your school returns.
 
-The parameters of the data endpoint methods (`get_homework()`, `get_discipline_events()`, `get_notification_settings()`, `get_messages_inbox()`, `get_pupil_schedule()`) are **keyword-only**. `switch_student()` also accepts positional arguments.
+The parameters of the data endpoint methods (`get_homework()`, `get_discipline_events()`, `get_notification_settings()`, `get_messages_inbox()`, `get_message()`, `get_pupil_schedule()`) are **keyword-only**. `switch_student()` also accepts positional arguments.
 
 ### Client Initialization
 
@@ -323,6 +324,16 @@ messages = await client.get_messages_inbox(
 - `label_id` - Message label/category (default: 0)
 - `has_read` - Filter by read status: `True`, `False`, or `None` for all (default: `None`)
 - `search_query` - Free-text search (default: `""`)
+
+##### `get_message()`
+Get one inbox message: the HTML body (`data.messageData.messageContent`), attachments (`filesList`), recipients, and any signature / survey request.
+
+```python
+message = await client.get_message(message_id=item["messageId"])  # item from get_messages_inbox()
+body_html = message["data"]["messageData"]["messageContent"]
+```
+
+`messageId` stays the same across logins. Like opening a message on the site, this marks it as read.
 
 #### Notifications
 
@@ -585,7 +596,8 @@ All requests go to `base_url` (default `https://webtopserver.smartschool.co.il`)
 | `get_discipline_events()` | `/server/api/dashboard/GetPupilDiciplineEvents` | `id`, `ClassCode` |
 | `get_preview_unread_notifications()` | `/server/api/Menu/GetPreviewUnreadNotifications` | `{}` |
 | `get_notification_settings()` | `/server/api/Notification/GetNotificationsSettings` | `id` |
-| `get_messages_inbox()` | `/server/api/messageBox/GetMessagesInbox` | `PageId`, `LabelId`, `HasRead`, `SearchQuery` |
+| `get_messages_inbox()` | `/server/api/messageBox/GetMessagesInbox` | `PageId`, `LabelId`, `HasRead` (0/1/null), `SearchQuery` |
+| `get_message()` | `/server/api/messageBox/GetMessagesInboxData` | `MessageId`, `FilterId`, `IsInbox`, `hasRead` |
 | `get_pupil_schedule()` | `/server/api/PupilCard/GetPupilScheduale` | `weekIndex`, `viewType`, `studyYear`, `studentID`, `classCode`, `moduleID` |
 | `get_lessons_and_homework()` | `/server/api/PupilCard/GetPupilLessonsAndHomework` | `weekIndex`, `viewType`, `studyYear`, `studentID`, `classCode`, `moduleID` |
 

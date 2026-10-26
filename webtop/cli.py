@@ -74,6 +74,10 @@ def _build_parser() -> argparse.ArgumentParser:
         )
     )
 
+    p = sub.add_parser("message", help="Get one inbox message (body, attachments); marks it as read")
+    p.add_argument("message_id", help="messageId from the `messages` command")
+    p.set_defaults(handler=lambda c, a: c.get_message(message_id=a.message_id))
+
     p = sub.add_parser("notifications", help="Get a preview of unread notifications")
     p.set_defaults(handler=lambda c, a: c.get_preview_unread_notifications())
 
