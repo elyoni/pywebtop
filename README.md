@@ -154,7 +154,7 @@ Add `-v` for debug logging (to stderr). The exit code is `1` on login or request
 
 All methods are coroutines (`await` them). Apart from `login()`, `switch_student()`, `get_linked_students()`, and `request()`, every endpoint method returns the **parsed JSON response as-is** (usually a `dict` with `status`, `data`, and error fields). The library does not model the response contents, so inspect the returned data for the fields your school returns.
 
-The parameters of the data endpoint methods (`get_homework()`, `get_discipline_events()`, `get_notification_settings()`, `get_messages_inbox()`, `get_message()`, `get_pupil_schedule()`) are **keyword-only**. `switch_student()` also accepts positional arguments.
+The parameters of the data endpoint methods (`get_homework()`, `get_discipline_events()`, `get_notification_settings()`, `get_messages_inbox()`, `get_message()`, `download_file()`, `get_pupil_schedule()`) are **keyword-only**. `switch_student()` also accepts positional arguments.
 
 ### Client Initialization
 
@@ -334,6 +334,15 @@ body_html = message["data"]["messageData"]["messageContent"]
 ```
 
 `messageId` stays the same across logins. Like opening a message on the site, this marks it as read.
+
+##### `download_file()`
+Download an attachment as bytes. Pass a `fileUrl` from the message's `filesList` (items also have `fileName`, `fileExtantion`, `fileSize`). Only the URL's token is used, so the request always goes to Webtop. Download in the same session as `get_message()`.
+
+```python
+for f in message["data"]["messageData"]["filesList"]:
+    content = await client.download_file(file_url=f["fileUrl"])
+    Path(f["fileName"]).write_bytes(content)
+```
 
 #### Notifications
 
@@ -598,6 +607,7 @@ All requests go to `base_url` (default `https://webtopserver.smartschool.co.il`)
 | `get_notification_settings()` | `/server/api/Notification/GetNotificationsSettings` | `id` |
 | `get_messages_inbox()` | `/server/api/messageBox/GetMessagesInbox` | `PageId`, `LabelId`, `HasRead` (0/1/null), `SearchQuery` |
 | `get_message()` | `/server/api/messageBox/GetMessagesInboxData` | `MessageId`, `FilterId`, `IsInbox`, `hasRead` |
+| `download_file()` | `/server/api/stream/GetFile` (GET) | `token` (query) |
 | `get_pupil_schedule()` | `/server/api/PupilCard/GetPupilScheduale` | `weekIndex`, `viewType`, `studyYear`, `studentID`, `classCode`, `moduleID` |
 | `get_lessons_and_homework()` | `/server/api/PupilCard/GetPupilLessonsAndHomework` | `weekIndex`, `viewType`, `studyYear`, `studentID`, `classCode`, `moduleID` |
 

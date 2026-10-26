@@ -582,6 +582,35 @@ class WebtopClient:
             logger.error(f"Failed to get message: {e}")
             raise
 
+    async def download_file(self, *, file_url: str) -> bytes:
+        """
+        Download an attachment, e.g. a `fileUrl` from get_message()'s `filesList`.
+
+        GET /server/api/stream/GetFile?token=<token>
+
+        Auth:
+          - Cookie: webToken=<token>
+
+        Params:
+          file_url: the attachment's `fileUrl`; only its `token` is used, so the
+                    request always goes to base_url
+
+        The token comes with the message, so download in the same session.
+        """
+        token = httpx.URL(file_url).params.get("token")
+        if not token:
+            raise ValueError("file_url has no token")
+        logger.info("Downloading file")
+        try:
+            resp = await self.request("GET", "/server/api/stream/GetFile", params={"token": token})
+        except Exception as e:
+            logger.error(f"Failed to download file: {e}")
+            raise
+        if len(resp.content) <= 1:  # the site treats a 1-byte answer as "file not found"
+            raise WebtopRequestError("GET /server/api/stream/GetFile: file not found")
+        logger.info(f"File downloaded ({len(resp.content)} bytes)")
+        return resp.content
+
     async def get_pupil_schedule(
         self,
         *,
